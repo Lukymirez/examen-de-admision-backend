@@ -44,50 +44,6 @@ const usuarioSchema = new Schema(
       required: true,
       select: false, // nunca se devuelve por defecto en las consultas
     },
-    // --- Datos personales (CU-03 del Diagrama de Casos de Uso) ---
-    fechaNacimiento: {
-      type: Date,
-    },
-    sexo: {
-      type: String,
-      enum: ['masculino', 'femenino', 'otro'],
-    },
-    direccion: {
-      type: String,
-      trim: true,
-    },
-    telefono: {
-      type: String,
-      trim: true,
-    },
-    estadoCivil: {
-      type: String,
-      enum: ['soltero', 'casado', 'viudo', 'divorciado'],
-    },
-    // --- Datos académicos (CU-04 del Diagrama de Casos de Uso) ---
-    colegio: {
-      type: String,
-      trim: true,
-    },
-    anioEgreso: {
-      type: Number,
-    },
-    modalidadIngreso: {
-      type: String,
-      enum: ['ordinario', 'CEPRE', 'traslado', 'EBR/EBA'],
-    },
-    carreraId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Carrera',
-    },
-    sede: {
-      type: String,
-      trim: true,
-    },
-    turno: {
-      type: String,
-      enum: ['mañana', 'tarde', 'noche'],
-    },
     rol: {
       type: String,
       enum: ['postulante', 'docente', 'comite', 'administrador'],
