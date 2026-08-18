@@ -64,7 +64,7 @@ const ejecutarSeed = async () => {
         estado: 'activo', // se salta el paso de "usuario temporal"
         emailVerificado: true, // ya verificado, no necesita el correo real
       },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
     console.log(`✅ ${datos.rol.padEnd(14)} → ${usuario.email}  (password: ${datos.passwordPlano})`);

@@ -27,6 +27,19 @@ export const validarRegistro = [
   body('password')
     .isLength({ min: 8 })
     .withMessage('La contraseña debe tener al menos 8 caracteres.'),
+  // Datos personales (CU-03)
+  body('fechaNacimiento').notEmpty().withMessage('La fecha de nacimiento es obligatoria.').isISO8601().withMessage('Fecha de nacimiento inválida.'),
+  body('sexo').isIn(['masculino', 'femenino', 'otro']).withMessage('Selecciona una opción válida.'),
+  body('direccion').trim().notEmpty().withMessage('La dirección es obligatoria.'),
+  body('telefono').trim().notEmpty().withMessage('El teléfono es obligatorio.'),
+  body('estadoCivil').isIn(['soltero', 'casado', 'viudo', 'divorciado']).withMessage('Selecciona una opción válida.'),
+  // Datos académicos (CU-04)
+  body('colegio').trim().notEmpty().withMessage('El colegio de procedencia es obligatorio.'),
+  body('anioEgreso').isInt({ min: 1970, max: new Date().getFullYear() }).withMessage('Año de egreso inválido.'),
+  body('modalidadIngreso').isIn(['ordinario', 'CEPRE', 'traslado', 'EBR/EBA']).withMessage('Selecciona una modalidad válida.'),
+  body('carreraId').notEmpty().withMessage('Debes elegir una carrera.').isMongoId().withMessage('La carrera seleccionada no es válida.'),
+  body('sede').trim().notEmpty().withMessage('La sede es obligatoria.'),
+  body('turno').isIn(['mañana', 'tarde', 'noche']).withMessage('Selecciona un turno válido.'),
 ];
 
 export const validarLogin = [
@@ -46,7 +59,24 @@ export const registrarUsuario = async (req, res) => {
       return res.status(400).json({ errores: errores.array() });
     }
 
-    const { nombres, apellidos, dni, email, password } = req.body;
+    const {
+      nombres,
+      apellidos,
+      dni,
+      email,
+      password,
+      fechaNacimiento,
+      sexo,
+      direccion,
+      telefono,
+      estadoCivil,
+      colegio,
+      anioEgreso,
+      modalidadIngreso,
+      carreraId,
+      sede,
+      turno,
+    } = req.body;
 
     const existente = await Usuario.findOne({ $or: [{ email: email.toLowerCase() }, { dni }] });
     if (existente) {
@@ -68,6 +98,17 @@ export const registrarUsuario = async (req, res) => {
       dni,
       email: email.toLowerCase(),
       password: passwordHash,
+      fechaNacimiento,
+      sexo,
+      direccion,
+      telefono,
+      estadoCivil,
+      colegio,
+      anioEgreso,
+      modalidadIngreso,
+      carreraId,
+      sede,
+      turno,
       estado: 'temporal',
       emailVerificado: false,
       tokenVerificacion,
