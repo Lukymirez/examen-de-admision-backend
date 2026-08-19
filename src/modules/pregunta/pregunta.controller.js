@@ -36,13 +36,14 @@ export const crearPregunta = async (req, res) => {
       return res.status(400).json({ errores: errores.array() });
     }
 
-    const { materia, enunciado, alternativas, respuestaCorrecta, dificultad } = req.body;
+    const { materia, enunciado, alternativas, respuestaCorrecta, dificultad, imagenUrl } = req.body;
     const nuevaPregunta = await Pregunta.create({
       materia,
       enunciado,
       alternativas,
       respuestaCorrecta,
       dificultad,
+      imagenUrl: imagenUrl || null,
       autorId: req.usuario.id,
     });
 
@@ -208,6 +209,60 @@ export const detectarDuplicados = async (req, res) => {
   } catch (error) {
     console.error(`[Pregunta] Error al detectar duplicados: ${error.message}`);
     return res.status(500).json({ mensaje: 'Error interno al detectar duplicados.' });
+  }
+};
+
+/**
+ * GET /api/preguntas/progreso-docentes — Administrador/Comité: cuántas
+ * preguntas subió cada docente, por materia y por estado. Es la base del
+ * "seguimiento de archivos subidos" que necesita el panel administrativo.
+ */
+export const progresoPorDocente = async (req, res) => {
+  try {
+    const agregacion = await Pregunta.aggregate([
+      {
+        $group: {
+          _id: { autorId: '$autorId', materia: '$materia', estado: '$estado' },
+          cantidad: { $sum: 1 },
+        },
+      },
+      {
+        $group: {
+          _id: '$_id.autorId',
+          detalle: {
+            $push: { materia: '$_id.materia', estado: '$_id.estado', cantidad: '$cantidad' },
+          },
+          total: { $sum: '$cantidad' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'usuarios',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'autor',
+        },
+      },
+      { $unwind: '$autor' },
+      {
+        $project: {
+          _id: 0,
+          autorId: '$_id',
+          nombres: '$autor.nombres',
+          apellidos: '$autor.apellidos',
+          email: '$autor.email',
+          rol: '$autor.rol',
+          total: 1,
+          detalle: 1,
+        },
+      },
+      { $sort: { apellidos: 1 } },
+    ]);
+
+    return res.status(200).json({ progreso: agregacion });
+  } catch (error) {
+    console.error(`[Pregunta] Error al calcular progreso por docente: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al calcular el progreso por docente.' });
   }
 };
 

@@ -5,9 +5,12 @@ import {
   verificarCorreo,
   reenviarVerificacion,
   loginUsuario,
+  listarPostulantes,
+  listarDocentes,
   validarRegistro,
   validarLogin,
 } from './usuario.controller.js';
+import { verificarToken, permitirRoles } from '../../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -22,5 +25,9 @@ router.post('/reenviar-verificacion', reenviarVerificacion);
 
 // Login: solo permitido si la cuenta ya fue verificada
 router.post('/login', validarLogin, loginUsuario);
+
+// Panel administrativo: seguimiento de postulantes y docentes
+router.get('/postulantes', verificarToken, permitirRoles('administrador'), listarPostulantes);
+router.get('/docentes', verificarToken, permitirRoles('administrador', 'comite'), listarDocentes);
 
 export default router;

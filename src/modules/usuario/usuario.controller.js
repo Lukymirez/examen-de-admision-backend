@@ -197,6 +197,46 @@ export const reenviarVerificacion = async (req, res) => {
 };
 
 /**
+ * GET /api/auth/postulantes — Administrador: lista de postulantes con la
+ * carrera y el turno elegidos, para dar seguimiento al flujo de postulación.
+ */
+export const listarPostulantes = async (req, res) => {
+  try {
+    const filtro = { rol: 'postulante' };
+    if (req.query.carreraId) filtro.carreraId = req.query.carreraId;
+    if (req.query.turno) filtro.turno = req.query.turno;
+
+    const postulantes = await Usuario.find(filtro)
+      .populate('carreraId', 'nombre')
+      .select('nombres apellidos dni email carreraId turno modalidadIngreso estado emailVerificado createdAt')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ postulantes });
+  } catch (error) {
+    console.error(`[Usuario] Error al listar postulantes: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al listar postulantes.' });
+  }
+};
+
+/**
+ * GET /api/auth/docentes — Administrador/Comité: lista de docentes y
+ * miembros del comité (sin su progreso de preguntas — eso lo da
+ * GET /api/preguntas/progreso-docentes).
+ */
+export const listarDocentes = async (req, res) => {
+  try {
+    const docentes = await Usuario.find({ rol: { $in: ['docente', 'comite'] } })
+      .select('nombres apellidos email rol estado createdAt')
+      .sort({ nombres: 1 });
+
+    return res.status(200).json({ docentes });
+  } catch (error) {
+    console.error(`[Usuario] Error al listar docentes: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al listar docentes.' });
+  }
+};
+
+/**
  * POST /api/auth/login
  * Solo permite iniciar sesión si la cuenta ya fue verificada (estado 'activo').
  * Devuelve un JWT para las siguientes peticiones autenticadas.

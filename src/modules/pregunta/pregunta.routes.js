@@ -7,6 +7,7 @@ import {
   listarTodas,
   validarPregunta,
   detectarDuplicados,
+  progresoPorDocente,
   generarExamenAleatorio,
   cartillaRespuestas,
   validarPreguntaUnica,
@@ -29,6 +30,7 @@ router.get('/mias', permitirRoles('docente', 'comite'), listarMisPreguntas);
 // Comité/Administrador: revisión, validación y generación del examen.
 router.get('/', permitirRoles('comite', 'administrador'), listarTodas);
 router.get('/duplicados', permitirRoles('comite', 'administrador'), detectarDuplicados);
+router.get('/progreso-docentes', permitirRoles('comite', 'administrador'), progresoPorDocente);
 router.put('/:id/validar', permitirRoles('comite'), validarPregunta);
 router.post('/generar-examen', permitirRoles('comite'), generarExamenAleatorio);
 router.get('/cartilla/:convocatoriaId', permitirRoles('comite', 'administrador'), cartillaRespuestas);

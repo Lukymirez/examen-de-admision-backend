@@ -43,6 +43,13 @@ const preguntaSchema = new Schema(
       enum: ['facil', 'medio', 'dificil'],
       default: 'medio',
     },
+    // URL de una imagen de apoyo (diagramas, gráficos, fórmulas) — opcional.
+    // Útil para preguntas de Matemática, Ciencias, etc. que requieren un
+    // elemento visual para poder responder.
+    imagenUrl: {
+      type: String,
+      default: null,
+    },
     autorId: {
       type: Schema.Types.ObjectId,
       ref: 'Usuario',
