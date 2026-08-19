@@ -86,7 +86,7 @@ const usuarioSchema = new Schema(
     },
     turno: {
       type: String,
-      enum: ['mañana', 'tarde', 'noche'],
+      enum: ['diurno', 'nocturno'],
     },
     rol: {
       type: String,

@@ -39,7 +39,7 @@ export const validarRegistro = [
   body('modalidadIngreso').isIn(['ordinario', 'CEPRE', 'traslado', 'EBR/EBA']).withMessage('Selecciona una modalidad válida.'),
   body('carreraId').notEmpty().withMessage('Debes elegir una carrera.').isMongoId().withMessage('La carrera seleccionada no es válida.'),
   body('sede').trim().notEmpty().withMessage('La sede es obligatoria.'),
-  body('turno').isIn(['mañana', 'tarde', 'noche']).withMessage('Selecciona un turno válido.'),
+  body('turno').isIn(['diurno', 'nocturno']).withMessage('Selecciona un turno válido.'),
 ];
 
 export const validarLogin = [

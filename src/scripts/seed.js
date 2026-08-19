@@ -4,17 +4,21 @@ import mongoose from 'mongoose';
 
 import connectDB from '../config/db.js';
 import Usuario from '../modules/usuario/usuario.model.js';
+import Convocatoria from '../modules/convocatoria/convocatoria.model.js';
+import Carrera from '../modules/carrera/carrera.model.js';
 
 /**
  * Script semillero (seed): crea 3 cuentas de prueba ya verificadas y activas,
- * para no depender del envío real de correo mientras se prueba el sistema.
+ * más la convocatoria y las carreras reales del instituto — para que el
+ * formulario de registro (que necesita elegir una carrera) tenga datos con
+ * los que trabajar desde el primer momento.
  *
  * Uso:
  *   yarn seed
  *   (o: node src/scripts/seed.js)
  *
- * Es seguro correrlo varias veces: si una cuenta ya existe (por email), la
- * actualiza en vez de duplicarla.
+ * Es seguro correrlo varias veces: si un registro ya existe, lo actualiza
+ * en vez de duplicarlo.
  */
 
 const USUARIOS_PRUEBA = [
@@ -44,6 +48,21 @@ const USUARIOS_PRUEBA = [
   },
 ];
 
+// Carreras reales del Instituto Superior Tecnológico Público María Rosario
+// Araoz Pinto (San Miguel, Lima). Las vacantes son un valor de ejemplo —
+// ajústalas desde el panel administrativo cuando esté disponible.
+const CARRERAS_REALES = [
+  { nombre: 'Administración de Empresas', vacantes: 40 },
+  { nombre: 'Contabilidad', vacantes: 40 },
+  { nombre: 'Construcción Civil', vacantes: 30 },
+  { nombre: 'Desarrollo de Sistemas de Información', vacantes: 40 },
+  { nombre: 'Diseño Gráfico', vacantes: 30 },
+  { nombre: 'Diseño Publicitario', vacantes: 30 },
+  { nombre: 'Secretariado Ejecutivo', vacantes: 30 },
+  { nombre: 'Mecánica Automotriz', vacantes: 30 },
+  { nombre: 'Mecánica de Producción', vacantes: 30 },
+];
+
 const ejecutarSeed = async () => {
   await connectDB();
 
@@ -70,13 +89,39 @@ const ejecutarSeed = async () => {
     console.log(`✅ ${datos.rol.padEnd(14)} → ${usuario.email}  (password: ${datos.passwordPlano})`);
   }
 
-  console.log('\n[Seed] Listo. Usa estas credenciales para iniciar sesión desde el frontend.\n');
+  console.log('\n[Seed] Creando/actualizando convocatoria y carreras...\n');
+
+  const convocatoria = await Convocatoria.findOneAndUpdate(
+    { nombre: 'Admisión Ordinaria 2026-II' },
+    {
+      nombre: 'Admisión Ordinaria 2026-II',
+      modalidad: 'ordinario',
+      fechaInicio: new Date('2026-08-01'),
+      fechaFin: new Date('2026-09-15'),
+      fechaExamen: new Date('2026-09-20'),
+      estado: 'publicada',
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  console.log(`✅ Convocatoria     → ${convocatoria.nombre} (${convocatoria.estado})`);
+
+  for (const datos of CARRERAS_REALES) {
+    const carrera = await Carrera.findOneAndUpdate(
+      { nombre: datos.nombre, convocatoriaId: convocatoria._id },
+      { nombre: datos.nombre, vacantes: datos.vacantes, convocatoriaId: convocatoria._id },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    console.log(`✅ Carrera          → ${carrera.nombre} (${carrera.vacantes} vacantes)`);
+  }
+
+  console.log('\n[Seed] Listo. Usa las credenciales de arriba para iniciar sesión, y ya deberían aparecer las 9 carreras en el formulario de registro.\n');
 
   await mongoose.disconnect();
   process.exit(0);
 };
 
 ejecutarSeed().catch((error) => {
-  console.error('[Seed] Error al crear los usuarios de prueba:', error.message);
+  console.error('[Seed] Error al ejecutar el seed:', error.message);
   process.exit(1);
 });
+
