@@ -28,15 +28,15 @@ const preguntaSchema = new Schema(
       type: [String],
       required: true,
       validate: {
-        validator: (arr) => arr.length === 4,
-        message: 'Cada pregunta debe tener exactamente 4 alternativas.',
+        validator: (arr) => arr.length === 5,
+        message: 'Cada pregunta debe tener exactamente 5 alternativas (A-E).',
       },
     },
     respuestaCorrecta: {
-      type: Number, // índice (0-3) dentro de "alternativas"
+      type: Number, // índice (0-4) dentro de "alternativas"
       required: true,
       min: 0,
-      max: 3,
+      max: 4,
     },
     dificultad: {
       type: String,
@@ -77,7 +77,7 @@ const preguntaSchema = new Schema(
   }
 );
 
-preguntaSchema.pre('save', function normalizarEnunciado(next) {
+preguntaSchema.pre('save', function normalizarEnunciado() {
   this.enunciadoNormalizado = this.enunciado
     .toLowerCase()
     .normalize('NFD')
@@ -85,7 +85,6 @@ preguntaSchema.pre('save', function normalizarEnunciado(next) {
     .replace(/[^a-z0-9 ]/g, '') // quita signos de puntuación
     .replace(/\s+/g, ' ')
     .trim();
-  next();
 });
 
 const Pregunta = model('Pregunta', preguntaSchema);

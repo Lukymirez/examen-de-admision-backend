@@ -10,6 +10,8 @@ import {
   progresoPorDocente,
   generarExamenAleatorio,
   cartillaRespuestas,
+  editarPregunta,
+  eliminarPregunta,
   validarPreguntaUnica,
   validarLotePreguntas,
 } from './pregunta.controller.js';
@@ -26,6 +28,10 @@ router.post('/lote', permitirRoles('docente', 'comite'), validarLotePreguntas, c
 
 // Un Docente ve solo lo que él mismo subió.
 router.get('/mias', permitirRoles('docente', 'comite'), listarMisPreguntas);
+
+// Editar/eliminar una pregunta propia (solo mientras no esté "validada").
+router.put('/:id', permitirRoles('docente', 'comite'), validarPreguntaUnica, editarPregunta);
+router.delete('/:id', permitirRoles('docente', 'comite'), eliminarPregunta);
 
 // Comité/Administrador: revisión, validación y generación del examen.
 router.get('/', permitirRoles('comite', 'administrador'), listarTodas);

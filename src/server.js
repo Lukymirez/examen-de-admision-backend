@@ -13,6 +13,7 @@ import carreraRoutes from './modules/carrera/carrera.routes.js';
 import convocatoriaRoutes from './modules/convocatoria/convocatoria.routes.js';
 import preguntaRoutes from './modules/pregunta/pregunta.routes.js';
 import uploadRoutes from './modules/upload/upload.routes.js';
+import simulacroRoutes from './modules/simulacro/simulacro.routes.js';
 
 // Inicializar conexión a MongoDB Atlas
 connectDB();
@@ -37,6 +38,7 @@ app.use('/api/carreras', carreraRoutes);
 app.use('/api/convocatorias', convocatoriaRoutes);
 app.use('/api/preguntas', preguntaRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/simulacro', simulacroRoutes);
 
 // Sirve las imágenes de las preguntas (diagramas, gráficos) de forma pública
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

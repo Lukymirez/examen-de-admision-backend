@@ -8,8 +8,8 @@ const MATERIAS_VALIDAS = ['matematica', 'razonamiento', 'comunicacion', 'histori
 const reglasUnaPregunta = (prefijo = '') => [
   body(`${prefijo}materia`).isIn(MATERIAS_VALIDAS).withMessage('Materia inválida.'),
   body(`${prefijo}enunciado`).trim().notEmpty().withMessage('El enunciado es obligatorio.'),
-  body(`${prefijo}alternativas`).isArray({ min: 4, max: 4 }).withMessage('Debes enviar exactamente 4 alternativas.'),
-  body(`${prefijo}respuestaCorrecta`).isInt({ min: 0, max: 3 }).withMessage('respuestaCorrecta debe ser un índice entre 0 y 3.'),
+  body(`${prefijo}alternativas`).isArray({ min: 5, max: 5 }).withMessage('Debes enviar exactamente 5 alternativas (A-E).'),
+  body(`${prefijo}respuestaCorrecta`).isInt({ min: 0, max: 4 }).withMessage('respuestaCorrecta debe ser un índice entre 0 y 4.'),
 ];
 
 export const validarPreguntaUnica = reglasUnaPregunta();
@@ -87,6 +87,74 @@ export const crearPreguntasLote = async (req, res) => {
 };
 
 /**
+ * PUT /api/preguntas/:id — el Docente/Comité edita SU PROPIA pregunta.
+ * Solo permitido mientras esté en "borrador" o "rechazada" — si el Comité
+ * ya la validó, queda bloqueada para no alterar el examen después de
+ * aprobado. Editar una pregunta "rechazada" la regresa a "borrador" para
+ * que el Comité la vuelva a revisar.
+ */
+export const editarPregunta = async (req, res) => {
+  try {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) {
+      return res.status(400).json({ errores: errores.array() });
+    }
+
+    const pregunta = await Pregunta.findById(req.params.id);
+    if (!pregunta) {
+      return res.status(404).json({ mensaje: 'Pregunta no encontrada.' });
+    }
+    if (String(pregunta.autorId) !== req.usuario.id) {
+      return res.status(403).json({ mensaje: 'Solo puedes editar tus propias preguntas.' });
+    }
+    if (pregunta.estado === 'validada') {
+      return res.status(403).json({ mensaje: 'Esta pregunta ya fue validada por el Comité y no se puede editar.' });
+    }
+
+    const { materia, enunciado, alternativas, respuestaCorrecta, dificultad, imagenUrl } = req.body;
+    pregunta.materia = materia;
+    pregunta.enunciado = enunciado;
+    pregunta.alternativas = alternativas;
+    pregunta.respuestaCorrecta = respuestaCorrecta;
+    pregunta.dificultad = dificultad || pregunta.dificultad;
+    pregunta.imagenUrl = imagenUrl ?? pregunta.imagenUrl;
+    pregunta.estado = 'borrador'; // vuelve a quedar pendiente de revisión
+    pregunta.validadaPor = null;
+    await pregunta.save();
+
+    return res.status(200).json({ mensaje: 'Pregunta actualizada. Vuelve a quedar pendiente de revisión.', pregunta: ocultarRespuesta(pregunta) });
+  } catch (error) {
+    console.error(`[Pregunta] Error al editar: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al editar la pregunta.' });
+  }
+};
+
+/**
+ * DELETE /api/preguntas/:id — el Docente/Comité elimina SU PROPIA pregunta.
+ * No se puede eliminar una pregunta ya validada (integridad del proceso).
+ */
+export const eliminarPregunta = async (req, res) => {
+  try {
+    const pregunta = await Pregunta.findById(req.params.id);
+    if (!pregunta) {
+      return res.status(404).json({ mensaje: 'Pregunta no encontrada.' });
+    }
+    if (String(pregunta.autorId) !== req.usuario.id) {
+      return res.status(403).json({ mensaje: 'Solo puedes eliminar tus propias preguntas.' });
+    }
+    if (pregunta.estado === 'validada') {
+      return res.status(403).json({ mensaje: 'Esta pregunta ya fue validada por el Comité y no se puede eliminar.' });
+    }
+
+    await pregunta.deleteOne();
+    return res.status(200).json({ mensaje: 'Pregunta eliminada.' });
+  } catch (error) {
+    console.error(`[Pregunta] Error al eliminar: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al eliminar la pregunta.' });
+  }
+};
+
+/**
  * GET /api/preguntas/mias — el Docente ve SUS propias preguntas y su
  * progreso de subida por materia (sin exponer respuestaCorrecta, no la
  * necesita para revisar lo que ya subió).
@@ -101,7 +169,7 @@ export const listarMisPreguntas = async (req, res) => {
     }, {});
 
     return res.status(200).json({
-      preguntas: preguntas.map(ocultarRespuesta),
+      preguntas, // el docente SÍ ve su propia respuestaCorrecta — la necesita para poder editar
       progresoPorMateria,
     });
   } catch (error) {
