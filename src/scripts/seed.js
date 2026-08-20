@@ -55,6 +55,22 @@ const USUARIOS_PRUEBA = [
     passwordPlano: 'Tesoreria1234!',
     rol: 'tesoreria',
   },
+  {
+    nombres: 'Carlos',
+    apellidos: 'Comité',
+    dni: '00000005',
+    email: 'comite@admision.test',
+    passwordPlano: 'Comite1234!',
+    rol: 'comite',
+  },
+  {
+    nombres: 'Sara',
+    apellidos: 'Secretaría',
+    dni: '00000006',
+    email: 'secretaria@admision.test',
+    passwordPlano: 'Secretaria1234!',
+    rol: 'secretaria',
+  },
 ];
 
 // Pago de ejemplo, ya aprobado, para que el postulante de prueba quede

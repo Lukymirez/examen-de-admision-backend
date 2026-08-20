@@ -6,7 +6,10 @@ import {
   reenviarVerificacion,
   loginUsuario,
   listarPostulantes,
+  exportarReportePostulantes,
+  reportePagoPostulante,
   listarDocentes,
+  cambiarRolDocenteComite,
   listarPagos,
   verificarPagoTesoreria,
   validarPago,
@@ -36,8 +39,12 @@ router.post('/reenviar-verificacion', reenviarVerificacion);
 router.post('/login', validarLogin, loginUsuario);
 
 // Panel administrativo: seguimiento de postulantes y docentes
-router.get('/postulantes', verificarToken, permitirRoles('administrador'), listarPostulantes);
+router.get('/postulantes', verificarToken, permitirRoles('administrador', 'secretaria'), listarPostulantes);
+router.get('/postulantes/reporte', verificarToken, permitirRoles('administrador', 'secretaria'), exportarReportePostulantes);
+router.get('/postulantes/:id/reporte-pago', verificarToken, permitirRoles('administrador', 'tesoreria'), reportePagoPostulante);
+
 router.get('/docentes', verificarToken, permitirRoles('administrador', 'comite'), listarDocentes);
+router.put('/docentes/:id/rol', verificarToken, permitirRoles('administrador'), cambiarRolDocenteComite);
 
 // Administrador: revisar y aprobar/rechazar pagos (HU-17/CU-08). Al aprobar
 // lo suficiente, habilita la postulación y genera el código único (HU-02/HU-03).

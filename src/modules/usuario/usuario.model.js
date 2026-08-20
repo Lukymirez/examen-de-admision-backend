@@ -101,8 +101,12 @@ const usuarioSchema = new Schema(
     codigoPostulante: {
       type: String,
       unique: true,
-      sparse: true, // permite que muchos documentos tengan null sin violar el índice único
-      default: null,
+      sparse: true, // permite que muchos documentos NO TENGAN este campo, sin violar el índice único
+      // Importante: SIN "default: null" — si tuviera un valor por defecto,
+      // Mongoose lo guardaría explícitamente en cada documento nuevo, y un
+      // índice sparse NO ignora valores null explícitos (solo campos
+      // completamente ausentes), lo que rompería la unicidad al segundo
+      // usuario sin código asignado.
     },
     // --- HU-02: Habilitación de la postulación ---
     // Empieza en false; el sistema lo pone en true automáticamente cuando
@@ -153,7 +157,7 @@ const usuarioSchema = new Schema(
     },
     rol: {
       type: String,
-      enum: ['postulante', 'docente', 'comite', 'administrador', 'tesoreria'],
+      enum: ['postulante', 'docente', 'comite', 'administrador', 'tesoreria', 'secretaria'],
       default: 'postulante',
     },
     estado: {

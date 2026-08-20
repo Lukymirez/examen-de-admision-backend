@@ -536,24 +536,209 @@ export const validarPago = async (req, res) => {
 };
 
 /**
- * GET /api/auth/postulantes — Administrador: lista de postulantes con la
- * carrera y el turno elegidos, para dar seguimiento al flujo de postulación.
+ * GET /api/auth/postulantes/:id/reporte-pago — Tesorería y Administrador:
+ * descarga un solo PDF con el/los voucher(s) del postulante y sus datos
+ * esenciales (nombre completo, DNI, carrera, turno, importe pagado del
+ * total) — para no tener que cruzar información entre varias pantallas.
+ */
+export const reportePagoPostulante = async (req, res) => {
+  try {
+    const postulante = await Usuario.findById(req.params.id).populate('carreraId', 'nombre');
+    if (!postulante) {
+      return res.status(404).json({ mensaje: 'Postulante no encontrado.' });
+    }
+    if (!postulante.matricula.pagos || postulante.matricula.pagos.length === 0) {
+      return res.status(404).json({ mensaje: 'Este postulante no tiene pagos registrados.' });
+    }
+
+    const PDFDocument = (await import('pdfkit')).default;
+    const path = await import('path');
+    const fs = await import('fs');
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="pago_${postulante.dni}.pdf"`);
+    doc.pipe(res);
+
+    doc.fontSize(16).text('Comprobante de pago — Sistema de Admisión 2026', { align: 'center' });
+    doc.moveDown(1.2);
+
+    const montoTotal = postulante.matricula.pagos.reduce((sum, p) => sum + p.monto, 0);
+    const MONTO_REQUERIDO = 150;
+
+    // --- Datos esenciales del postulante ---
+    doc.fontSize(11).font('Helvetica-Bold').text('Datos del postulante');
+    doc.font('Helvetica').fontSize(10);
+    doc.text(`Nombre completo: ${postulante.nombres} ${postulante.apellidos}`);
+    doc.text(`DNI: ${postulante.dni}`);
+    doc.text(`Carrera: ${postulante.carreraId?.nombre || '—'}`);
+    doc.text(`Turno: ${postulante.turno || '—'}`);
+    doc.text(`Importe pagado: S/. ${montoTotal.toFixed(2)} de S/. ${MONTO_REQUERIDO.toFixed(2)} requeridos`);
+    doc.moveDown(1);
+
+    // --- Cada voucher: imagen (si aplica) + sus datos ---
+    for (const [i, pago] of postulante.matricula.pagos.entries()) {
+      doc.font('Helvetica-Bold').fontSize(11).text(`Voucher ${i + 1}`);
+      doc.font('Helvetica').fontSize(10);
+      doc.text(`N° de operación: ${pago.numeroOperacion}`);
+      doc.text(`Monto: S/. ${pago.monto.toFixed(2)}`);
+      doc.text(`Fecha: ${new Date(pago.fecha).toLocaleDateString('es-PE')}`);
+      doc.text(`Sede: ${pago.sede}${pago.ventanilla ? ` · Ventanilla ${pago.ventanilla}` : ''}`);
+      doc.text(`Estado: ${pago.estado}${pago.verificadoTesoreria ? ' · Verificado por Tesorería' : ''}`);
+      doc.moveDown(0.5);
+
+      const rutaArchivo = path.default.join(process.cwd(), pago.voucherUrl.replace(/^\//, ''));
+      const esImagen = /\.(png|jpe?g|webp)$/i.test(pago.voucherUrl);
+
+      if (esImagen && fs.default.existsSync(rutaArchivo)) {
+        try {
+          // Si no queda espacio suficiente en la página actual, saltamos de
+          // página ANTES de insertar la imagen (evita que quede cortada).
+          if (doc.y > doc.page.height - doc.page.margins.bottom - 260) {
+            doc.addPage();
+          }
+          const yAntes = doc.y;
+          doc.image(rutaArchivo, doc.x, yAntes, { fit: [300, 220] });
+          // Controlamos la posición manualmente: pdfkit no siempre avanza el
+          // cursor de forma consistente tras insertar una imagen, lo que
+          // causaba que el siguiente voucher se dibujara encima.
+          doc.y = yAntes + 230;
+        } catch {
+          doc.fillColor('red').text('(No se pudo insertar la imagen del voucher)').fillColor('black');
+        }
+      } else {
+        doc.fillColor('blue').text(`Voucher adjunto en otro formato: ${pago.voucherUrl}`).fillColor('black');
+      }
+      doc.moveDown(1.2);
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error(`[Usuario] Error al generar reporte de pago: ${error.message}`);
+    if (!res.headersSent) {
+      return res.status(500).json({ mensaje: 'Error interno al generar el reporte de pago.' });
+    }
+  }
+};
+
+/**
+ * GET /api/auth/postulantes — Administrador y Secretaría Académica: lista
+ * de postulantes con seguimiento completo (incluye correo y teléfono, para
+ * poder contactarlos si necesitan regularizar algún documento).
+ *
+ * Filtros disponibles (todos opcionales, se combinan entre sí):
+ *  - carreraId          → postulantes de esa carrera (primera opción)
+ *  - turno               → diurno | nocturno
+ *  - modalidadIngreso     → ordinario | CEPRE | traslado | EBR/EBA
+ *  - sede                 → texto exacto de la sede
+ *  - postulacionHabilitada → true | false
+ *  - estadoCuenta         → temporal | activo | suspendido (Usuario.estado)
+ *  - fechaDesde / fechaHasta → rango de fecha de registro (createdAt)
+ *  - busqueda             → texto libre sobre nombres, apellidos, DNI o correo
  */
 export const listarPostulantes = async (req, res) => {
   try {
     const filtro = { rol: 'postulante' };
+
     if (req.query.carreraId) filtro.carreraId = req.query.carreraId;
     if (req.query.turno) filtro.turno = req.query.turno;
+    if (req.query.modalidadIngreso) filtro.modalidadIngreso = req.query.modalidadIngreso;
+    if (req.query.sede) filtro.sede = req.query.sede;
+    if (req.query.postulacionHabilitada !== undefined) {
+      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true';
+    }
+    if (req.query.estadoCuenta) filtro.estado = req.query.estadoCuenta;
+
+    if (req.query.fechaDesde || req.query.fechaHasta) {
+      filtro.createdAt = {};
+      if (req.query.fechaDesde) filtro.createdAt.$gte = new Date(req.query.fechaDesde);
+      if (req.query.fechaHasta) filtro.createdAt.$lte = new Date(req.query.fechaHasta);
+    }
+
+    if (req.query.busqueda) {
+      const regex = new RegExp(req.query.busqueda.trim(), 'i');
+      filtro.$or = [{ nombres: regex }, { apellidos: regex }, { dni: regex }, { email: regex }];
+    }
 
     const postulantes = await Usuario.find(filtro)
       .populate('carreraId', 'nombre')
-      .select('nombres apellidos dni email carreraId turno modalidadIngreso estado emailVerificado createdAt')
+      .populate('segundaOpcionCarreraId', 'nombre')
+      .select(
+        'nombres apellidos dni email telefono direccion carreraId segundaOpcionCarreraId turno modalidadIngreso sede estado emailVerificado postulacionHabilitada codigoPostulante matricula.pagos createdAt'
+      )
       .sort({ createdAt: -1 });
 
     return res.status(200).json({ postulantes });
   } catch (error) {
     console.error(`[Usuario] Error al listar postulantes: ${error.message}`);
     return res.status(500).json({ mensaje: 'Error interno al listar postulantes.' });
+  }
+};
+
+/**
+ * GET /api/auth/postulantes/reporte — Administrador y Secretaría Académica:
+ * descarga un CSV de postulantes con los mismos filtros que listarPostulantes
+ * (se le pasan los mismos query params). Pensado para abrir en Excel.
+ */
+export const exportarReportePostulantes = async (req, res) => {
+  try {
+    const filtro = { rol: 'postulante' };
+
+    if (req.query.carreraId) filtro.carreraId = req.query.carreraId;
+    if (req.query.turno) filtro.turno = req.query.turno;
+    if (req.query.modalidadIngreso) filtro.modalidadIngreso = req.query.modalidadIngreso;
+    if (req.query.sede) filtro.sede = req.query.sede;
+    if (req.query.postulacionHabilitada !== undefined) {
+      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true';
+    }
+    if (req.query.estadoCuenta) filtro.estado = req.query.estadoCuenta;
+    if (req.query.fechaDesde || req.query.fechaHasta) {
+      filtro.createdAt = {};
+      if (req.query.fechaDesde) filtro.createdAt.$gte = new Date(req.query.fechaDesde);
+      if (req.query.fechaHasta) filtro.createdAt.$lte = new Date(req.query.fechaHasta);
+    }
+    if (req.query.busqueda) {
+      const regex = new RegExp(req.query.busqueda.trim(), 'i');
+      filtro.$or = [{ nombres: regex }, { apellidos: regex }, { dni: regex }, { email: regex }];
+    }
+
+    const postulantes = await Usuario.find(filtro)
+      .populate('carreraId', 'nombre')
+      .select('nombres apellidos dni email telefono direccion carreraId turno modalidadIngreso sede estado postulacionHabilitada codigoPostulante createdAt')
+      .sort({ createdAt: -1 });
+
+    const escaparCsv = (valor) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
+
+    const encabezados = ['Nombres', 'Apellidos', 'DNI', 'Correo', 'Teléfono', 'Dirección', 'Carrera', 'Turno', 'Modalidad', 'Sede', 'Estado cuenta', 'Postulación habilitada', 'Código postulante', 'Fecha de registro'];
+    const filas = postulantes.map((p) =>
+      [
+        p.nombres,
+        p.apellidos,
+        p.dni,
+        p.email,
+        p.telefono,
+        p.direccion,
+        p.carreraId?.nombre || '',
+        p.turno,
+        p.modalidadIngreso,
+        p.sede,
+        p.estado,
+        p.postulacionHabilitada ? 'Sí' : 'No',
+        p.codigoPostulante || '',
+        p.createdAt.toISOString().slice(0, 10),
+      ]
+        .map(escaparCsv)
+        .join(',')
+    );
+
+    const csv = '\uFEFF' + [encabezados.map(escaparCsv).join(','), ...filas].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="postulantes_${new Date().toISOString().slice(0, 10)}.csv"`);
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error(`[Usuario] Error al exportar reporte: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al generar el reporte.' });
   }
 };
 
@@ -572,6 +757,38 @@ export const listarDocentes = async (req, res) => {
   } catch (error) {
     console.error(`[Usuario] Error al listar docentes: ${error.message}`);
     return res.status(500).json({ mensaje: 'Error interno al listar docentes.' });
+  }
+};
+
+/**
+ * PUT /api/auth/docentes/:id/rol — SOLO Administrador. Cambia el rol de un
+ * usuario entre "docente" y "comite" (ej: agregar a un docente al Comité,
+ * o regresarlo a docente normal). No permite asignar otros roles desde
+ * aquí, por seguridad — evita convertir accidentalmente a alguien en
+ * administrador desde este endpoint.
+ */
+export const cambiarRolDocenteComite = async (req, res) => {
+  try {
+    const { rol } = req.body;
+    if (!['docente', 'comite'].includes(rol)) {
+      return res.status(400).json({ mensaje: 'El rol debe ser "docente" o "comite".' });
+    }
+
+    const usuario = await Usuario.findById(req.params.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+    if (!['docente', 'comite'].includes(usuario.rol)) {
+      return res.status(400).json({ mensaje: 'Solo se puede cambiar el rol de usuarios que ya son docente o comité.' });
+    }
+
+    usuario.rol = rol;
+    await usuario.save();
+
+    return res.status(200).json({ mensaje: `Rol actualizado a ${rol}.`, usuario: { id: usuario._id, rol: usuario.rol } });
+  } catch (error) {
+    console.error(`[Usuario] Error al cambiar rol: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al cambiar el rol.' });
   }
 };
 

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node src/scripts/seed.js"
+    "seed": "node src/scripts/seed.js",
+    "fix-codigo": "node src/scripts/corregir-codigo-postulante.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -20,7 +21,8 @@
     "mongoose": "^9.7.4",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
