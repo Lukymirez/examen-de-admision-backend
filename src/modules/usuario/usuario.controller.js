@@ -270,7 +270,7 @@ const MONTO_EXAMEN_REQUERIDO = 150; // S/. 150.00, según el costo real informad
  */
 export const miMatricula = async (req, res) => {
   try {
-    const usuario = await Usuario.findById(req.usuario.id).select('matricula');
+    const usuario = await Usuario.findById(req.usuario.id).select('matricula postulacionHabilitada codigoPostulante');
     if (!usuario) {
       return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
     }
@@ -287,6 +287,8 @@ export const miMatricula = async (req, res) => {
       montoTotalPagado,
       montoRequerido: MONTO_EXAMEN_REQUERIDO,
       pagoCompleto,
+      postulacionHabilitada: usuario.postulacionHabilitada,
+      codigoPostulante: usuario.codigoPostulante,
       completo: documentosCompletados === CAMPOS_MATRICULA_VALIDOS.length && pagoCompleto,
     });
   } catch (error) {
@@ -406,6 +408,130 @@ export const eliminarPago = async (req, res) => {
   } catch (error) {
     console.error(`[Usuario] Error al eliminar pago: ${error.message}`);
     return res.status(500).json({ mensaje: 'Error interno al eliminar el pago.' });
+  }
+};
+
+/**
+ * Genera el código único de postulante (HU-03), formato: P26-00001.
+ * Se llama automáticamente al habilitarse la postulación (ver validarPago).
+ */
+const generarCodigoPostulante = async () => {
+  const anio = new Date().getFullYear().toString().slice(-2);
+  const totalConCodigo = await Usuario.countDocuments({ codigoPostulante: { $ne: null } });
+  const secuencial = String(totalConCodigo + 1).padStart(5, '0');
+  return `P${anio}-${secuencial}`;
+};
+
+/**
+ * GET /api/auth/pagos — Administrador Y Tesorería pueden ver los pagos
+ * registrados (Tesorería los revisa contra su propio sistema bancario;
+ * Administración decide si aprobar/rechazar con esa información).
+ */
+export const listarPagos = async (req, res) => {
+  try {
+    const filtro = { 'matricula.pagos.0': { $exists: true } };
+    if (req.query.estado) {
+      filtro['matricula.pagos.estado'] = req.query.estado;
+    }
+
+    const postulantes = await Usuario.find(filtro)
+      .select('nombres apellidos dni email matricula.pagos codigoPostulante postulacionHabilitada')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ postulantes });
+  } catch (error) {
+    console.error(`[Usuario] Error al listar pagos: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al listar los pagos.' });
+  }
+};
+
+/**
+ * PUT /api/auth/pagos/:postulanteId/:indice/verificar — Tesorería confirma
+ * que el voucher es real, verificado contra su propio sistema bancario.
+ * IMPORTANTE: esto NO aprueba el pago ni habilita nada — es solo una
+ * bandera informativa para que Administración tome la decisión final.
+ */
+export const verificarPagoTesoreria = async (req, res) => {
+  try {
+    const { postulanteId, indice } = req.params;
+
+    const postulante = await Usuario.findById(postulanteId);
+    if (!postulante) {
+      return res.status(404).json({ mensaje: 'Postulante no encontrado.' });
+    }
+
+    const i = Number(indice);
+    if (Number.isNaN(i) || !postulante.matricula.pagos[i]) {
+      return res.status(404).json({ mensaje: 'Pago no encontrado.' });
+    }
+
+    postulante.matricula.pagos[i].verificadoTesoreria = true;
+    postulante.matricula.pagos[i].verificadoPorTesoreriaId = req.usuario.id;
+    postulante.matricula.pagos[i].fechaVerificacionTesoreria = new Date();
+    await postulante.save();
+
+    return res.status(200).json({
+      mensaje: 'Pago marcado como verificado por Tesorería. Queda pendiente de aprobación de Administración.',
+      pagos: postulante.matricula.pagos,
+    });
+  } catch (error) {
+    console.error(`[Usuario] Error al verificar pago (Tesorería): ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al verificar el pago.' });
+  }
+};
+
+/**
+ * PUT /api/auth/pagos/:postulanteId/:indice — SOLO Administrador aprueba o
+ * rechaza un pago (CU-08). Esta es la única acción que puede habilitar la
+ * postulación — la verificación de Tesorería es solo informativa, nunca
+ * habilita nada automáticamente.
+ */
+export const validarPago = async (req, res) => {
+  try {
+    const { postulanteId, indice } = req.params;
+    const { estado, comentario } = req.body; // 'aprobado' | 'rechazado'
+
+    if (!['aprobado', 'rechazado'].includes(estado)) {
+      return res.status(400).json({ mensaje: 'El estado debe ser "aprobado" o "rechazado".' });
+    }
+
+    const postulante = await Usuario.findById(postulanteId);
+    if (!postulante) {
+      return res.status(404).json({ mensaje: 'Postulante no encontrado.' });
+    }
+
+    const i = Number(indice);
+    if (Number.isNaN(i) || !postulante.matricula.pagos[i]) {
+      return res.status(404).json({ mensaje: 'Pago no encontrado.' });
+    }
+
+    postulante.matricula.pagos[i].estado = estado;
+    postulante.matricula.pagos[i].comentarioAdmin = comentario || null;
+
+    let mensajeExtra = '';
+    if (estado === 'aprobado' && !postulante.postulacionHabilitada) {
+      const montoAprobado = postulante.matricula.pagos
+        .filter((p) => p.estado === 'aprobado')
+        .reduce((sum, p) => sum + p.monto, 0);
+
+      if (montoAprobado >= MONTO_EXAMEN_REQUERIDO) {
+        postulante.postulacionHabilitada = true;
+        postulante.codigoPostulante = await generarCodigoPostulante();
+        mensajeExtra = ` Postulación habilitada — código asignado: ${postulante.codigoPostulante}.`;
+      }
+    }
+
+    await postulante.save();
+
+    return res.status(200).json({
+      mensaje: `Pago marcado como ${estado}.${mensajeExtra}`,
+      postulacionHabilitada: postulante.postulacionHabilitada,
+      codigoPostulante: postulante.codigoPostulante,
+      pagos: postulante.matricula.pagos,
+    });
+  } catch (error) {
+    console.error(`[Usuario] Error al validar pago: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al validar el pago.' });
   }
 };
 

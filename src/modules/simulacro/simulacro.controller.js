@@ -1,4 +1,5 @@
 import Pregunta from '../pregunta/pregunta.model.js';
+import Usuario from '../usuario/usuario.model.js';
 import IntentoSimulacro from './simulacro.model.js';
 
 const MATERIAS = ['matematica', 'razonamiento', 'comunicacion', 'historia', 'cultura', 'geografia', 'ciencias'];
@@ -50,6 +51,15 @@ const inicioDeHoy = () => {
 export const iniciarSimulacro = async (req, res) => {
   try {
     const postulanteId = req.usuario.id;
+
+    // HU-02: la postulación debe estar habilitada (pago validado por
+    // Administración) antes de poder practicar simulacros.
+    const postulante = await Usuario.findById(postulanteId).select('postulacionHabilitada');
+    if (!postulante?.postulacionHabilitada) {
+      return res.status(403).json({
+        mensaje: 'Tu postulación todavía no está habilitada. Completa el pago del examen en "Completar mi registro / matrícula" y espera a que el área administrativa lo valide.',
+      });
+    }
 
     const intentosHoy = await IntentoSimulacro.countDocuments({
       postulanteId,

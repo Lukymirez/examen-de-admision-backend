@@ -7,6 +7,9 @@ import {
   loginUsuario,
   listarPostulantes,
   listarDocentes,
+  listarPagos,
+  verificarPagoTesoreria,
+  validarPago,
   miCarrera,
   actualizarSegundaOpcion,
   miMatricula,
@@ -35,6 +38,18 @@ router.post('/login', validarLogin, loginUsuario);
 // Panel administrativo: seguimiento de postulantes y docentes
 router.get('/postulantes', verificarToken, permitirRoles('administrador'), listarPostulantes);
 router.get('/docentes', verificarToken, permitirRoles('administrador', 'comite'), listarDocentes);
+
+// Administrador: revisar y aprobar/rechazar pagos (HU-17/CU-08). Al aprobar
+// lo suficiente, habilita la postulación y genera el código único (HU-02/HU-03).
+// Tesorería y Administrador pueden VER los pagos.
+router.get('/pagos', verificarToken, permitirRoles('administrador', 'tesoreria'), listarPagos);
+
+// Tesorería solo puede marcar como "verificado contra el banco" — no habilita nada.
+router.put('/pagos/:postulanteId/:indice/verificar', verificarToken, permitirRoles('tesoreria'), verificarPagoTesoreria);
+
+// Administrador es el ÚNICO que aprueba/rechaza — y por lo tanto, el único
+// que puede habilitar la postulación y generar el código único.
+router.put('/pagos/:postulanteId/:indice', verificarToken, permitirRoles('administrador'), validarPago);
 
 // Postulante: ver/editar su carrera y segunda opción
 router.get('/mi-carrera', verificarToken, permitirRoles('postulante'), miCarrera);

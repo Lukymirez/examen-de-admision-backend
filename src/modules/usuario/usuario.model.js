@@ -96,6 +96,21 @@ const usuarioSchema = new Schema(
       type: String,
       enum: ['diurno', 'nocturno'],
     },
+    // --- HU-03: Código único del postulante ---
+    // Se genera automáticamente al validarse el pago (ver HU-02/HU-17).
+    codigoPostulante: {
+      type: String,
+      unique: true,
+      sparse: true, // permite que muchos documentos tengan null sin violar el índice único
+      default: null,
+    },
+    // --- HU-02: Habilitación de la postulación ---
+    // Empieza en false; el sistema lo pone en true automáticamente cuando
+    // el área administrativa aprueba pagos que suman el monto requerido.
+    postulacionHabilitada: {
+      type: Boolean,
+      default: false,
+    },
     // --- Matrícula: documentos y pago (CU adicional, requisitos reales del instituto) ---
     matricula: {
       fotoCarnetUrl: { type: String, default: null },
@@ -104,7 +119,8 @@ const usuarioSchema = new Schema(
       declaracionJuradaUrl: { type: String, default: null },
       // Hasta 2 pagos (por si el postulante pagó en partes). Cada uno con
       // los datos verificables del voucher real del Banco de la Nación,
-      // para poder detectar duplicados o reutilización del mismo voucher.
+      // para poder detectar duplicados o reutilización del mismo voucher,
+      // y con un estado que solo Administración puede cambiar (HU-17/CU-08).
       pagos: {
         type: [
           {
@@ -114,6 +130,18 @@ const usuarioSchema = new Schema(
             sede: { type: String, required: true, trim: true }, // agencia/agente donde se pagó
             ventanilla: { type: String, trim: true, default: null }, // N° de ventanilla o caja (si aparece en el voucher)
             voucherUrl: { type: String, required: true },
+            estado: {
+              type: String,
+              enum: ['pendiente', 'aprobado', 'rechazado'],
+              default: 'pendiente',
+            },
+            comentarioAdmin: { type: String, default: null }, // motivo si fue rechazado
+            // Verificación de Tesorería: confirma contra su propio sistema
+            // bancario que el voucher es real, ANTES de que Administración
+            // decida aprobar o rechazar. No habilita nada por sí sola.
+            verificadoTesoreria: { type: Boolean, default: false },
+            verificadoPorTesoreriaId: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
+            fechaVerificacionTesoreria: { type: Date, default: null },
           },
         ],
         default: [],
@@ -125,7 +153,7 @@ const usuarioSchema = new Schema(
     },
     rol: {
       type: String,
-      enum: ['postulante', 'docente', 'comite', 'administrador'],
+      enum: ['postulante', 'docente', 'comite', 'administrador', 'tesoreria'],
       default: 'postulante',
     },
     estado: {

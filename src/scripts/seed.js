@@ -47,7 +47,31 @@ const USUARIOS_PRUEBA = [
     passwordPlano: 'Docente1234!',
     rol: 'docente',
   },
+  {
+    nombres: 'Teodora',
+    apellidos: 'Tesorería',
+    dni: '00000004',
+    email: 'tesoreria@admision.test',
+    passwordPlano: 'Tesoreria1234!',
+    rol: 'tesoreria',
+  },
 ];
+
+// Pago de ejemplo, ya aprobado, para que el postulante de prueba quede
+// COMPLETAMENTE consistente: pago visible como "aprobado" en su matrícula,
+// verificado por Tesorería, Y con la postulación realmente habilitada por
+// ese motivo (no por un atajo forzado).
+const PAGO_SEED_POSTULANTE = {
+  numeroOperacion: 'SEED-000001',
+  fecha: new Date(),
+  monto: 150,
+  sede: 'Agencia San Miguel (dato de prueba)',
+  ventanilla: '01',
+  voucherUrl: '/uploads/matricula/seed-voucher-demo.png',
+  estado: 'aprobado',
+  verificadoTesoreria: true,
+  fechaVerificacionTesoreria: new Date(),
+};
 
 // Carreras reales del Instituto Superior Tecnológico Público María Rosario
 // Araoz Pinto (San Miguel, Lima). Las vacantes son un valor de ejemplo —
@@ -179,6 +203,12 @@ const PREGUNTAS_INICIALES = [
 const ejecutarSeed = async () => {
   await connectDB();
 
+  const generarCodigoPostulanteSeed = async () => {
+    const anio = new Date().getFullYear().toString().slice(-2);
+    const total = await Usuario.countDocuments({ codigoPostulante: { $ne: null } });
+    return `P${anio}-${String(total + 1).padStart(5, '0')}`;
+  };
+
   console.log('\n[Seed] Creando/actualizando usuarios de prueba...\n');
 
   let docenteId = null;
@@ -202,6 +232,18 @@ const ejecutarSeed = async () => {
     );
 
     console.log(`✅ ${datos.rol.padEnd(14)} → ${usuario.email}  (password: ${datos.passwordPlano})`);
+
+    // Al postulante de prueba le insertamos un pago YA aprobado y verificado
+    // (dato de ejemplo), para que el flujo completo quede consistente:
+    // matrícula muestra "aprobado", y la postulación queda habilitada con
+    // su código — igual que pasaría con un pago real revisado por el equipo.
+    if (datos.rol === 'postulante' && usuario.matricula.pagos.length === 0) {
+      usuario.matricula.pagos.push(PAGO_SEED_POSTULANTE);
+      usuario.postulacionHabilitada = true;
+      usuario.codigoPostulante = usuario.codigoPostulante || (await generarCodigoPostulanteSeed());
+      await usuario.save();
+      console.log(`   └─ Pago de ejemplo aprobado, postulación habilitada, código: ${usuario.codigoPostulante}`);
+    }
 
     // Guardamos la referencia del docente de prueba: será el "autor" del
     // banco de preguntas inicial, y también quien las valida (simula al
