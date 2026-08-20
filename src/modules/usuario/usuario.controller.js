@@ -197,6 +197,219 @@ export const reenviarVerificacion = async (req, res) => {
 };
 
 /**
+ * GET /api/auth/mi-carrera — Postulante ve su carrera elegida (primera
+ * opción, definida al registrarse) y su segunda opción (si ya la definió).
+ * También devuelve la lista de carreras disponibles para poder elegir/
+ * cambiar la segunda opción.
+ */
+export const miCarrera = async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.usuario.id)
+      .populate('carreraId', 'nombre vacantes')
+      .populate('segundaOpcionCarreraId', 'nombre vacantes')
+      .select('carreraId segundaOpcionCarreraId turno modalidadIngreso sede');
+
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+
+    return res.status(200).json({
+      primeraOpcion: usuario.carreraId,
+      segundaOpcion: usuario.segundaOpcionCarreraId,
+      turno: usuario.turno,
+      modalidadIngreso: usuario.modalidadIngreso,
+      sede: usuario.sede,
+    });
+  } catch (error) {
+    console.error(`[Usuario] Error al obtener mi-carrera: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al obtener tu carrera.' });
+  }
+};
+
+/**
+ * PUT /api/auth/mi-carrera — Postulante define o cambia su SEGUNDA opción
+ * de carrera (la primera queda fija desde el registro; para cambiarla
+ * tendría que pasar por el área administrativa).
+ */
+export const actualizarSegundaOpcion = async (req, res) => {
+  try {
+    const { segundaOpcionCarreraId } = req.body;
+    if (!segundaOpcionCarreraId) {
+      return res.status(400).json({ mensaje: 'Debes indicar una carrera para la segunda opción.' });
+    }
+
+    const usuario = await Usuario.findById(req.usuario.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+    if (String(usuario.carreraId) === String(segundaOpcionCarreraId)) {
+      return res.status(400).json({ mensaje: 'La segunda opción debe ser distinta de tu primera opción.' });
+    }
+
+    usuario.segundaOpcionCarreraId = segundaOpcionCarreraId;
+    await usuario.save();
+
+    const actualizado = await Usuario.findById(usuario._id).populate('segundaOpcionCarreraId', 'nombre vacantes');
+
+    return res.status(200).json({ mensaje: 'Segunda opción actualizada.', segundaOpcion: actualizado.segundaOpcionCarreraId });
+  } catch (error) {
+    console.error(`[Usuario] Error al actualizar segunda opción: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al actualizar tu segunda opción.' });
+  }
+};
+
+const CAMPOS_MATRICULA_VALIDOS = ['fotoCarnetUrl', 'dniUrl', 'certificadoEstudiosUrl', 'declaracionJuradaUrl'];
+const MONTO_EXAMEN_REQUERIDO = 150; // S/. 150.00, según el costo real informado por el instituto
+
+/**
+ * GET /api/auth/mi-matricula — Postulante ve el estado de sus documentos
+ * y sus pagos registrados, con base en los requisitos reales de matrícula
+ * del instituto (foto carné, DNI ambas caras, certificado de estudios,
+ * declaraciones juradas, y el pago del examen S/.150 — que puede
+ * registrarse en hasta 2 partes).
+ */
+export const miMatricula = async (req, res) => {
+  try {
+    const usuario = await Usuario.findById(req.usuario.id).select('matricula');
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+
+    const matricula = usuario.matricula || { pagos: [] };
+    const documentosCompletados = CAMPOS_MATRICULA_VALIDOS.filter((campo) => Boolean(matricula[campo])).length;
+    const montoTotalPagado = (matricula.pagos || []).reduce((sum, p) => sum + p.monto, 0);
+    const pagoCompleto = montoTotalPagado >= MONTO_EXAMEN_REQUERIDO;
+
+    return res.status(200).json({
+      matricula,
+      documentosCompletados,
+      documentosTotales: CAMPOS_MATRICULA_VALIDOS.length,
+      montoTotalPagado,
+      montoRequerido: MONTO_EXAMEN_REQUERIDO,
+      pagoCompleto,
+      completo: documentosCompletados === CAMPOS_MATRICULA_VALIDOS.length && pagoCompleto,
+    });
+  } catch (error) {
+    console.error(`[Usuario] Error al obtener mi-matricula: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al obtener tu matrícula.' });
+  }
+};
+
+/**
+ * PUT /api/auth/mi-matricula — Postulante guarda la URL de UN documento
+ * (foto, DNI, certificado o declaración jurada) a la vez.
+ */
+export const actualizarMiMatricula = async (req, res) => {
+  try {
+    const { campo, url } = req.body;
+    if (!CAMPOS_MATRICULA_VALIDOS.includes(campo)) {
+      return res.status(400).json({ mensaje: 'Campo de matrícula inválido.' });
+    }
+    if (!url) {
+      return res.status(400).json({ mensaje: 'Falta la URL del documento.' });
+    }
+
+    const usuario = await Usuario.findByIdAndUpdate(
+      req.usuario.id,
+      { [`matricula.${campo}`]: url },
+      { new: true }
+    ).select('matricula');
+
+    return res.status(200).json({ mensaje: 'Documento guardado correctamente.', matricula: usuario.matricula });
+  } catch (error) {
+    console.error(`[Usuario] Error al actualizar mi-matricula: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al guardar el documento.' });
+  }
+};
+
+/**
+ * POST /api/auth/mi-matricula/pago — Registra un pago del examen (voucher
+ * del Banco de la Nación), con los datos que permiten detectar duplicados:
+ * número de operación, fecha, monto, sede y ventanilla.
+ *
+ * El número de operación es el dato REALMENTE único e irrepetible de un
+ * voucher bancario — se verifica que nadie más (ni el mismo postulante dos
+ * veces) lo haya registrado antes, para evitar que un mismo voucher se
+ * reutilice para "pagar" dos matrículas distintas.
+ */
+export const agregarPago = async (req, res) => {
+  try {
+    const { numeroOperacion, fecha, monto, sede, ventanilla, voucherUrl } = req.body;
+
+    if (!numeroOperacion || !fecha || !monto || !sede || !voucherUrl) {
+      return res.status(400).json({
+        mensaje: 'Faltan datos del voucher: número de operación, fecha, monto, sede y el archivo son obligatorios.',
+      });
+    }
+
+    const usuario = await Usuario.findById(req.usuario.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+    if ((usuario.matricula.pagos || []).length >= 2) {
+      return res.status(400).json({ mensaje: 'Ya registraste el máximo de 2 pagos permitidos.' });
+    }
+
+    // Detección de duplicados: ¿ese número de operación ya fue usado por
+    // CUALQUIER postulante (incluido uno mismo) en un pago anterior?
+    const numeroOperacionNormalizado = numeroOperacion.trim();
+    const yaExiste = await Usuario.findOne({ 'matricula.pagos.numeroOperacion': numeroOperacionNormalizado });
+    if (yaExiste) {
+      return res.status(409).json({
+        mensaje: 'Este número de operación ya fue registrado anteriormente. Si crees que es un error, contacta al área administrativa — no se puede reutilizar el mismo voucher.',
+      });
+    }
+
+    usuario.matricula.pagos.push({
+      numeroOperacion: numeroOperacionNormalizado,
+      fecha,
+      monto,
+      sede,
+      ventanilla: ventanilla || null,
+      voucherUrl,
+    });
+    await usuario.save();
+
+    const montoTotalPagado = usuario.matricula.pagos.reduce((sum, p) => sum + p.monto, 0);
+
+    return res.status(201).json({
+      mensaje: 'Pago registrado correctamente.',
+      pagos: usuario.matricula.pagos,
+      montoTotalPagado,
+      pagoCompleto: montoTotalPagado >= MONTO_EXAMEN_REQUERIDO,
+    });
+  } catch (error) {
+    console.error(`[Usuario] Error al registrar pago: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al registrar el pago.' });
+  }
+};
+
+/**
+ * DELETE /api/auth/mi-matricula/pago/:indice — Elimina un pago registrado
+ * por error, por su posición (0 o 1) en el arreglo.
+ */
+export const eliminarPago = async (req, res) => {
+  try {
+    const indice = Number(req.params.indice);
+    const usuario = await Usuario.findById(req.usuario.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado.' });
+    }
+    if (Number.isNaN(indice) || indice < 0 || indice >= usuario.matricula.pagos.length) {
+      return res.status(400).json({ mensaje: 'Pago no encontrado.' });
+    }
+
+    usuario.matricula.pagos.splice(indice, 1);
+    await usuario.save();
+
+    return res.status(200).json({ mensaje: 'Pago eliminado.', pagos: usuario.matricula.pagos });
+  } catch (error) {
+    console.error(`[Usuario] Error al eliminar pago: ${error.message}`);
+    return res.status(500).json({ mensaje: 'Error interno al eliminar el pago.' });
+  }
+};
+
+/**
  * GET /api/auth/postulantes — Administrador: lista de postulantes con la
  * carrera y el turno elegidos, para dar seguimiento al flujo de postulación.
  */

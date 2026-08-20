@@ -80,6 +80,14 @@ const usuarioSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Carrera',
     },
+    // Segunda opción de carrera — por si el promedio del examen no alcanza
+    // para ingresar a la primera. Se define después del registro, desde
+    // "Mi carrera" en la sesión del postulante.
+    segundaOpcionCarreraId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Carrera',
+      default: null,
+    },
     sede: {
       type: String,
       trim: true,
@@ -87,6 +95,33 @@ const usuarioSchema = new Schema(
     turno: {
       type: String,
       enum: ['diurno', 'nocturno'],
+    },
+    // --- Matrícula: documentos y pago (CU adicional, requisitos reales del instituto) ---
+    matricula: {
+      fotoCarnetUrl: { type: String, default: null },
+      dniUrl: { type: String, default: null },
+      certificadoEstudiosUrl: { type: String, default: null },
+      declaracionJuradaUrl: { type: String, default: null },
+      // Hasta 2 pagos (por si el postulante pagó en partes). Cada uno con
+      // los datos verificables del voucher real del Banco de la Nación,
+      // para poder detectar duplicados o reutilización del mismo voucher.
+      pagos: {
+        type: [
+          {
+            numeroOperacion: { type: String, required: true, trim: true },
+            fecha: { type: Date, required: true },
+            monto: { type: Number, required: true, min: 0 },
+            sede: { type: String, required: true, trim: true }, // agencia/agente donde se pagó
+            ventanilla: { type: String, trim: true, default: null }, // N° de ventanilla o caja (si aparece en el voucher)
+            voucherUrl: { type: String, required: true },
+          },
+        ],
+        default: [],
+        validate: {
+          validator: (arr) => arr.length <= 2,
+          message: 'Solo se permiten hasta 2 pagos (en caso de pago en partes).',
+        },
+      },
     },
     rol: {
       type: String,
