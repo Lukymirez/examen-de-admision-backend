@@ -39,7 +39,7 @@ router.post('/reenviar-verificacion', reenviarVerificacion);
 router.post('/login', validarLogin, loginUsuario);
 
 // Panel administrativo: seguimiento de postulantes y docentes
-router.get('/postulantes', verificarToken, permitirRoles('administrador', 'secretaria'), listarPostulantes);
+router.get('/postulantes', verificarToken, permitirRoles('administrador', 'secretaria', 'tesoreria'), listarPostulantes);
 router.get('/postulantes/reporte', verificarToken, permitirRoles('administrador', 'secretaria'), exportarReportePostulantes);
 router.get('/postulantes/:id/reporte-pago', verificarToken, permitirRoles('administrador', 'tesoreria'), reportePagoPostulante);
 

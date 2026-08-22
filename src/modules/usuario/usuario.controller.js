@@ -645,7 +645,13 @@ export const listarPostulantes = async (req, res) => {
     if (req.query.modalidadIngreso) filtro.modalidadIngreso = req.query.modalidadIngreso;
     if (req.query.sede) filtro.sede = req.query.sede;
     if (req.query.postulacionHabilitada !== undefined) {
-      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true';
+      // `true` exige coincidencia exacta (solo se marca true explícitamente
+      // al aprobar un pago). `false` usa $ne:true en vez de comparar contra
+      // false literal, para incluir también a los usuarios donde el campo
+      // ni siquiera existe todavía en la base de datos (cuentas creadas
+      // antes de que este campo existiera en el esquema) — de lo contrario
+      // esos postulantes quedaban invisibles al filtrar por "No habilitado".
+      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true' ? true : { $ne: true };
     }
     if (req.query.estadoCuenta) filtro.estado = req.query.estadoCuenta;
 
@@ -689,7 +695,13 @@ export const exportarReportePostulantes = async (req, res) => {
     if (req.query.modalidadIngreso) filtro.modalidadIngreso = req.query.modalidadIngreso;
     if (req.query.sede) filtro.sede = req.query.sede;
     if (req.query.postulacionHabilitada !== undefined) {
-      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true';
+      // `true` exige coincidencia exacta (solo se marca true explícitamente
+      // al aprobar un pago). `false` usa $ne:true en vez de comparar contra
+      // false literal, para incluir también a los usuarios donde el campo
+      // ni siquiera existe todavía en la base de datos (cuentas creadas
+      // antes de que este campo existiera en el esquema) — de lo contrario
+      // esos postulantes quedaban invisibles al filtrar por "No habilitado".
+      filtro.postulacionHabilitada = req.query.postulacionHabilitada === 'true' ? true : { $ne: true };
     }
     if (req.query.estadoCuenta) filtro.estado = req.query.estadoCuenta;
     if (req.query.fechaDesde || req.query.fechaHasta) {

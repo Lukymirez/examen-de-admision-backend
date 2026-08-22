@@ -1,14 +1,23 @@
 import Pregunta from '../pregunta/pregunta.model.js';
-import Usuario from '../usuario/usuario.model.js';
 import IntentoSimulacro from './simulacro.model.js';
 
 const MATERIAS = ['matematica', 'razonamiento', 'comunicacion', 'historia', 'cultura', 'geografia', 'ciencias'];
 
-// Cantidad de preguntas que se intenta traer POR MATERIA en cada simulacro.
-// Si el banco no tiene suficientes preguntas SIN USAR en una materia, se
-// toman las que haya disponibles (incluso 0) — el simulacro simplemente
-// sale más corto en esa materia hasta que los docentes suban más preguntas.
-const PREGUNTAS_POR_MATERIA = 6;
+// Cantidad EXACTA de preguntas por materia en cada simulacro — suman 33 en
+// total. La distribución es proporcional a cuántas preguntas reales hay
+// de cada materia en el banco (Matemática y Razonamiento son las más
+// numerosas; Historia, Cultura y Geografía son las más escasas, así que
+// se les pide poco para que no se agoten enseguida).
+const PREGUNTAS_POR_MATERIA = {
+  matematica: 13,
+  razonamiento: 9,
+  comunicacion: 4,
+  ciencias: 4,
+  cultura: 1,
+  geografia: 1,
+  historia: 1,
+};
+// Total: 13+9+4+4+1+1+1 = 33 preguntas por simulacro.
 
 const MAX_INTENTOS_POR_DIA = 2;
 
@@ -52,15 +61,6 @@ export const iniciarSimulacro = async (req, res) => {
   try {
     const postulanteId = req.usuario.id;
 
-    // HU-02: la postulación debe estar habilitada (pago validado por
-    // Administración) antes de poder practicar simulacros.
-    const postulante = await Usuario.findById(postulanteId).select('postulacionHabilitada');
-    if (!postulante?.postulacionHabilitada) {
-      return res.status(403).json({
-        mensaje: 'Tu postulación todavía no está habilitada. Completa el pago del examen en "Completar mi registro / matrícula" y espera a que el área administrativa lo valide.',
-      });
-    }
-
     const intentosHoy = await IntentoSimulacro.countDocuments({
       postulanteId,
       createdAt: { $gte: inicioDeHoy() },
@@ -89,7 +89,7 @@ export const iniciarSimulacro = async (req, res) => {
         estado: 'validada',
         _id: { $nin: [...idsUsadas] },
       });
-      const elegidas = mezclarArreglo(pool).slice(0, PREGUNTAS_POR_MATERIA);
+      const elegidas = mezclarArreglo(pool).slice(0, PREGUNTAS_POR_MATERIA[materia]);
       preguntasSeleccionadas.push(...elegidas);
     }
 
